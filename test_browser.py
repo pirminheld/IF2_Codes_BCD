@@ -25,6 +25,9 @@ def run():
 
         page.locator('nav a[data-panel=hamming]').click()
         page.locator('#hamming-example').click()
+        for _ in range(9):page.locator('#hamming-next').click()
+        assert '1100110' in page.locator('#hamming-walk-calculation').inner_text()
+        page.locator('#hamming-experiment summary').click()
         assert '1 0 1' in page.locator('#hamming-syndrome').inner_text()
         page.locator('#hamming-groups button').first.click()
         assert page.locator('#hamming-bits .selected').count()==4

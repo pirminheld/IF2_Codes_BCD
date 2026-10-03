@@ -18,9 +18,10 @@
     return {syndrome,position,corrected:corrected.join(''),data:[3,5,6,7].map(i=>corrected[i-1]).join('')};
   }
   const gray=n=>n^(n>>1);
-  function transition(n,step=0){
+  function transition(n,step=0,order='high'){
     const next=(n+1)%16,a=bits(n),b=bits(next),ga=bits(gray(n)),gb=bits(gray(next));
     const changed=[0,1,2,3].filter(i=>a[i]!==b[i]);
+    if(order==='low')changed.reverse();
     const intermediate=a.split('');changed.slice(0,step).forEach(i=>intermediate[i]=b[i]);
     return {next,changed,old:a,target:b,binary:intermediate.join(''),gray:step===0?ga:gb,oldGray:ga,targetGray:gb};
   }

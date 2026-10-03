@@ -17,6 +17,15 @@ for(let a=0;a<100;a++)for(let b=0;b<100;b++){
  ok(s.zero?s.addition.result:s.negative?-(100-s.remaining):s.remaining,a-b);
 }
 ok(M.transition(7,1).binary,'1111');ok(M.transition(7,1).gray,'1100');
+ok([0,1,2,3,4].map(i=>parseInt(M.transition(7,i,'low').binary,2)),[7,6,4,0,8]);
+for(let n=0;n<16;n++)for(const order of ['high','low']){
+ const first=M.transition(n,0,order),last=M.transition(n,first.changed.length,order);
+ ok(last.binary,M.bits((n+1)%16));ok(last.gray,M.bits(M.gray((n+1)%16)));
+ for(let step=1;step<=first.changed.length;step++){
+  const a=M.transition(n,step-1,order).binary,b=M.transition(n,step,order).binary;
+  ok([...a].filter((x,i)=>x!==b[i]).length,1);
+ }
+}
 ok(M.add(9,8).steps[0].correction,6);ok(M.add(9,8).steps[0].digit,7);
 for(const name of ['index.html','style.css','app.js','model.js','FTS_logo.png','impressum.html','QR_Code.png'])ok(fs.existsSync(name),true);
 ok(fs.readFileSync('QR_Code.png').subarray(0,8).toString('hex'),'89504e470d0a1a0a');

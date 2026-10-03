@@ -41,7 +41,33 @@
   $('parity-single').onclick=()=>{received=flip(transmitted,0);renderParity();};
   $('parity-double').onclick=()=>{received=flip(flip(transmitted,0),1);renderParity();};transmit();
 
-  let hOriginal=M.encode('0110'),hReceived=hOriginal,selectedGroup=0;
+  let hOriginal=M.encode('0110'),hReceived=hOriginal,selectedGroup=0,hStep=0;
+  const hLabels=['1 · p₁','2 · p₂','3 · d₁','4 · p₄','5 · d₂','6 · d₃','7 · d₄'];
+  const hTitles=['Datenbits einsetzen','Prüfbit p₁ bestimmen','Prüfbit p₂ bestimmen','Prüfbit p₄ bestimmen','Wort übertragen und Fehler einbauen','Prüfergebnis s₁ berechnen','Prüfergebnis s₂ berechnen','Prüfergebnis s₄ berechnen','Syndrom lesen: Fehlerposition bestimmen','Ein Bit korrigieren und Daten ablesen'];
+  const sub={1:'₁',2:'₂',4:'₄'};
+  function renderHammingWalk(){
+    const r=M.check(hReceived),encoding=hStep<4,p=encoding?[0,1,2,4][hStep]:[0,1,2,4][hStep-4]||0;
+    let word=encoding?[...hOriginal].map((b,i)=>[0,1,3].includes(i)&&hStep<([0,1,3].indexOf(i)+1)?'–':b).join(''):hStep===9?r.corrected:hReceived;
+    const group=M.groups[p]||[],actual=difference(hOriginal,hReceived);
+    $('hamming-progress').textContent=`Schritt ${hStep+1} von 10`;
+    $('hamming-walk-title').textContent=`${hStep+1} · ${hTitles[hStep]}`;
+    $('hamming-prev').disabled=hStep===0;$('hamming-next').disabled=hStep===9;
+    $('hamming-stages').replaceChildren();
+    hTitles.forEach((title,i)=>{const b=document.createElement('button');b.textContent=String(i+1);b.title=title;b.setAttribute('aria-label',`Schritt ${i+1}: ${title}`);b.setAttribute('aria-pressed',String(i===hStep));b.onclick=()=>{hStep=i;renderHammingWalk();};$('hamming-stages').append(b);});
+    $('hamming-walk-bits').replaceChildren(bitRow(word,hLabels,hStep===4?i=>{hReceived=flip(hReceived,i);renderHamming();}:null,{parity:[0,1,3],group,original:encoding?null:hOriginal}));
+    let context='',calculation='',result='';
+    if(hStep===0){context='Sender: Die vier Datenbits kommen an die Positionen 3, 5, 6 und 7. Die drei freien Plätze sind für die Prüfbits reserviert.';calculation=`Daten: ${[3,5,6,7].map(i=>hOriginal[i-1]).join('')} → – – ${hOriginal[2]} – ${hOriginal[4]} ${hOriginal[5]} ${hOriginal[6]}`;result='Die Zahlen unter den Bits sind Positionen im übertragenen Wort. p₁ gehört zu Position 1, nicht zum ersten Datenbit.';}
+    else if(encoding){const positions=group.filter(i=>i!==p),values=positions.map(i=>+hOriginal[i-1]),count=values.reduce((a,b)=>a+b,0),parity=+hOriginal[p-1];context=`Sender: Gruppe ${p} umfasst die Positionen ${group.join(', ')}. Die markierten Bits müssen zusammen eine gerade Anzahl von Einsen enthalten.`;calculation=`Daten in dieser Gruppe: ${values.join(' + ')} = ${count} Einsen.\np${sub[p]} = ${parity} → ${count} + ${parity} = ${count+parity} Einsen (gerade).`;result='Das Prüfbit ergänzt seine Gruppe auf gerade Parität. Es wird als Teil des sieben Bit langen Wortes mitgesendet.';}
+    else if(hStep===4){context=`Übertragung: Gesendet wird ${hOriginal}, empfangen wird ${hReceived}. Klicken Sie ein Empfangsbit an, um einen Fehler einzubauen.`;calculation=`Sender ${hOriginal} → Übertragungsstrecke / mögliche Störung → Empfänger ${hReceived}`;result=`Simulationshilfe: ${actual} veränderte Bits. Der Empfänger sieht nur das empfangene Wort; er vergleicht es nicht mit dem unbekannten Sendewort.`;}
+    else if(hStep<=7){const values=group.map(i=>+hReceived[i-1]),count=values.reduce((a,b)=>a+b,0);context=`Empfänger: Prüfen Sie die gesamte Gruppe ${p}, einschließlich des empfangenen Prüfbits an Position ${p}.`;calculation=`Positionen ${group.join(', ')}: ${values.join(' + ')} = ${count} Einsen\n${count%2?'Ungerade → Parität verletzt':'Gerade → Parität erfüllt'} → s${sub[p]} = ${r.syndrome[p]}`;result='s steht hier für ein Prüfergebnis: 0 = Paritätsbedingung erfüllt, 1 = verletzt. Es ist kein empfangenes Daten- oder Prüfbit. Der Index nennt die Prüfgruppe.';}
+    else if(hStep===8){context='Das Syndrom fasst die drei Prüfergebnisse zu einem Dualwort zusammen. Links steht s₄ mit Gewicht 4, in der Mitte s₂ mit Gewicht 2, rechts s₁ mit Gewicht 1.';calculation=`s₄s₂s₁ = ${r.syndrome[4]}${r.syndrome[2]}${r.syndrome[1]}₂\nF = 4 · ${r.syndrome[4]} + 2 · ${r.syndrome[2]} + 1 · ${r.syndrome[1]} = ${r.position}`;result=r.position?`Bei höchstens einem Fehler ist Position ${r.position} fehlerhaft: `+[1,2,4].map(k=>`Gruppe ${k} ${M.groups[k].includes(r.position)?'enthält':'enthält nicht'} Position ${r.position} → s${sub[k]} = ${r.syndrome[k]}`).join('; ')+'.':'Syndrom 000: Kein Fehler erkannt. Das beweist bei mehreren möglichen Fehlern keine fehlerfreie Übertragung.';}
+    else {context=r.position?`Bei höchstens einem Fehler: Drehen Sie ausschließlich das Bit an Position ${r.position} um.`:'Syndrom 000: Kein Bit wird umgekehrt.';calculation=`${hReceived} → ${r.corrected}\nDaten an Position 3, 5, 6, 7: ${r.data}`;result=actual>1?'In dieser Simulation wurden mehrere Bits verändert. Das Verfahren liefert hier keine verlässliche Korrektur.':r.position?'Der einzelne Fehler ist korrigiert. Die drei Prüfgruppen haben wieder gerade Parität.':'Die Daten können abgelesen werden; kein Fehler wurde erkannt.';}
+    $('hamming-walk-context').textContent=context;$('hamming-walk-calculation').textContent=calculation;$('hamming-walk-result').textContent=result;
+    $('hamming-walk-syndrome').innerHTML=hStep<5?'':[4,2,1].map(k=>{const known=hStep>={1:5,2:6,4:7}[k];return `<div><strong>s${sub[k]}</strong><span>${known?r.syndrome[k]:'?'}</span><small>Gewicht ${k} · Gruppe ${k}</small><small>${known?(r.syndrome[k]?'Parität verletzt':'Parität erfüllt'):'noch nicht geprüft'}</small></div>`;}).join('');
+  }
+  $('hamming-prev').onclick=()=>{hStep=Math.max(0,hStep-1);renderHammingWalk();};
+  $('hamming-next').onclick=()=>{hStep=Math.min(9,hStep+1);renderHammingWalk();};
+  $('hamming-start').onclick=()=>{hStep=0;renderHammingWalk();};
   function renderHamming(){
     const checked=M.check(hReceived),group=M.groups[selectedGroup]||[],labels=['1 · p₁','2 · p₂','3 · d₁','4 · p₄','5 · d₂','6 · d₃','7 · d₄'];
     $('hamming-original').textContent=`Gesendetes Wort: ${hOriginal}`;
@@ -56,9 +82,10 @@
     }
     $('hamming-syndrome').innerHTML=`<small>Syndrom · s₄ s₂ s₁</small>${checked.syndrome[4]} ${checked.syndrome[2]} ${checked.syndrome[1]}`;
     $('hamming-position').textContent=`F = 4 · ${checked.syndrome[4]} + 2 · ${checked.syndrome[2]} + ${checked.syndrome[1]} = ${checked.position}. ${checked.position?'Bei einem einzelnen Fehler: Position '+checked.position+' umkehren.':'Kein Fehler erkannt.'}`;
+    renderHammingWalk();
   }
   function encodeInput(){const data=$('hamming-data').value;if(!M.validWord(data,4)){$('hamming-input-info').textContent='Bitte genau vier Bits eingeben, jeweils 0 oder 1.';return;}
-    hOriginal=M.encode(data);hReceived=hOriginal;selectedGroup=0;$('hamming-input-info').textContent=`${data} → ${hOriginal}. Prüfbits bilden gerade Parität.`;$('hamming-correction').textContent='';renderHamming();
+    hOriginal=M.encode(data);hReceived=hOriginal;selectedGroup=0;hStep=0;$('hamming-input-info').textContent='Daten übernommen. Bestimmen Sie die Prüfbits im geführten Rechenweg.';$('hamming-correction').textContent='';renderHamming();
   }
   $('hamming-encode').onclick=encodeInput;$('hamming-data').onkeydown=e=>{if(e.key==='Enter')encodeInput();};
   $('hamming-reset').onclick=()=>{hReceived=hOriginal;$('hamming-correction').textContent='';renderHamming();};
@@ -70,9 +97,9 @@
     status('hamming-correction',text+(actual===1?'Der einzelne Fehler ist korrigiert.':'Mehrere Fehler: Das Ergebnis ist keine sichere Korrektur und weicht vom Sendewort ab.'),actual===1?'good':'warn');
   };encodeInput();
 
-  let grayStep=0;
+  let grayStep=0,grayConvert=0;
   function renderGray(){
-    const n=+$('gray-position').value,t=M.transition(n,grayStep),finished=grayStep>=t.changed.length;
+    const n=+$('gray-position').value,order=$('gray-order').value,t=M.transition(n,grayStep,order),finished=grayStep>=t.changed.length;
     $('gray-value').value=n;$('gray-value').textContent=n;
     $('gray-binary-heading').textContent=`${n} → ${t.next} · ${t.changed.length} Bitwechsel`;
     $('gray-gray-heading').textContent=`${n} → ${t.next} · 1 Bitwechsel`;
@@ -85,8 +112,16 @@
     $('gray-step').disabled=finished;
     status('gray-status',grayStep===0?'Sagen Sie einen möglichen Dual-Zwischenwert voraus. Klicken Sie dann auf „Nächster Bitwechsel“.':finished?'Ziel erreicht: Beide Codes stellen jetzt Position '+t.next+' dar.':'Bitwechsel '+grayStep+' von '+t.changed.length+': Dual zeigt '+value+', Gray bereits den Nachbarwert '+t.next+'.',grayStep&&!finished?'warn':'');
     $('gray-table').innerHTML=Array.from({length:16},(_,i)=>`<tr class="${i===n?'current':''}"><td>${i}</td><td><code>${M.bits(i)}</code></td><td><code>${M.bits(M.gray(i))}</code></td><td>1 Bit</td></tr>`).join('');
+    const rows=Array.from({length:Math.min(grayStep,t.changed.length)+1},(_,i)=>{const x=M.transition(n,i,order),v=parseInt(x.binary,2),wrong=v!==n&&v!==t.next;return `<tr class="${i===grayStep?'current':''}"><td>${i===0?'Start':`Spur b${3-t.changed[i-1]} wechselt`}</td><td><code>${x.binary}</code> → <strong>${v}</strong>${wrong?' · falscher Zwischenwert':''}</td><td>${i===0?`<code>${x.oldGray}</code> → ${n}`:i===1?`<code>${x.targetGray}</code> → ${t.next} (einziger Wechsel)`:'keine weiteren wechselnden Spuren'}</td></tr>`;}).join('');
+    $('gray-history').innerHTML=`<table><thead><tr><th>Schaltvorgang</th><th>Dual: Wort → Position</th><th>Gray: Wort → Position</th></tr></thead><tbody>${rows}</tbody></table>`;
+    const b=[...M.bits(n)].map(Number),g=[...M.bits(M.gray(n))].map(Number);
+    const forward=[`g₃ = b₃ = ${b[0]}`,`g₂ = b₃ ⊕ b₂ = ${b[0]} ⊕ ${b[1]} = ${g[1]}`,`g₁ = b₂ ⊕ b₁ = ${b[1]} ⊕ ${b[2]} = ${g[2]}`,`g₀ = b₁ ⊕ b₀ = ${b[2]} ⊕ ${b[3]} = ${g[3]}`];
+    const backward=[`b₃ = g₃ = ${g[0]}`,`b₂ = b₃ ⊕ g₂ = ${b[0]} ⊕ ${g[1]} = ${b[1]}`,`b₁ = b₂ ⊕ g₁ = ${b[1]} ⊕ ${g[2]} = ${b[2]}`,`b₀ = b₁ ⊕ g₀ = ${b[2]} ⊕ ${g[3]} = ${b[3]}`];
+    $('gray-conversion').innerHTML=`<div><h4>1 · Dual ${b.join('')} → Gray</h4>${forward.slice(0,Math.min(grayConvert,4)).map(x=>`<p class="formula">${x}</p>`).join('')}${grayConvert>=4?`<strong>Gray-Wort: ${g.join('')}</strong>`:'<p>Nächste Rechenzeile aufdecken.</p>'}</div><div><h4>2 · Gray ${g.join('')} → Dual</h4>${backward.slice(0,Math.max(0,grayConvert-4)).map(x=>`<p class="formula">${x}</p>`).join('')}${grayConvert>=8?`<strong>Dual ${b.join('')} = Position ${n}</strong>`:'<p>Links beginnen. Verwenden Sie jeweils das gerade berechnete Dualbit für die nächste Zeile.</p>'}</div>`;
+    $('gray-convert-next').disabled=grayConvert===8;
   }
-  $('gray-position').oninput=()=>{grayStep=0;renderGray();};$('gray-step').onclick=()=>{grayStep++;renderGray();};$('gray-reset').onclick=()=>{grayStep=0;renderGray();};renderGray();
+  $('gray-position').oninput=()=>{grayStep=0;grayConvert=0;renderGray();};$('gray-order').onchange=()=>{grayStep=0;renderGray();};$('gray-step').onclick=()=>{grayStep++;renderGray();};$('gray-reset').onclick=()=>{grayStep=0;renderGray();};
+  $('gray-convert-next').onclick=()=>{grayConvert=Math.min(8,grayConvert+1);renderGray();};$('gray-convert-reset').onclick=()=>{grayConvert=0;renderGray();};renderGray();
 
   let addReveal=0,subReveal=0;
   function numbers(prefix){const a=$(prefix+'-a').value,b=$(prefix+'-b').value;if(a.trim()===''||b.trim()===''||!Number.isInteger(+a)||!Number.isInteger(+b)||+a<0||+a>99||+b<0||+b>99)return null;return [+a,+b];}
